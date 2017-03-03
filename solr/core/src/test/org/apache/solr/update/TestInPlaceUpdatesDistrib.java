@@ -71,6 +71,7 @@ import org.slf4j.LoggerFactory;
 @Slow
 public class TestInPlaceUpdatesDistrib extends AbstractFullDistribZkTestBase {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private final boolean onlyLeaderIndexes = random().nextBoolean();
 
   @BeforeClass
   public static void beforeSuperClass() throws Exception {
@@ -108,7 +109,12 @@ public class TestInPlaceUpdatesDistrib extends AbstractFullDistribZkTestBase {
       iw.decref();
     }
   }
-  
+
+  @Override
+  protected int getRealtimeReplicas() {
+    return onlyLeaderIndexes? 1 : -1;
+  }
+
   @After
   public void after() {
     System.clearProperty("solr.tests.intClassName");
@@ -196,6 +202,10 @@ public class TestInPlaceUpdatesDistrib extends AbstractFullDistribZkTestBase {
 
   // The following should work: full update to doc 0, in-place update for doc 0, delete doc 0
   private void outOfOrderDBQsTest() throws Exception {
+    if (onlyLeaderIndexes) {
+      log.info("RTG with DBQs are not working in active replicas");
+      return;
+    }
     
     clearIndex();
     commit();
@@ -262,6 +272,10 @@ public class TestInPlaceUpdatesDistrib extends AbstractFullDistribZkTestBase {
   }
 
   private void reorderedDBQIndividualReplicaTest() throws Exception {
+    if (onlyLeaderIndexes) {
+      log.info("RTG with DBQs are not working in active replicas");
+      return;
+    }
     clearIndex();
     commit();
 
