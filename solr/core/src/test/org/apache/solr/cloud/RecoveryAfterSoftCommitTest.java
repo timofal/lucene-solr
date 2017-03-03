@@ -39,6 +39,11 @@ public class RecoveryAfterSoftCommitTest extends AbstractFullDistribZkTestBase {
     fixShardCount(2);
   }
 
+  @Override
+  protected int getRealtimeReplicas() {
+    return 1;
+  }
+
   @BeforeClass
   public static void beforeTests() {
     System.setProperty("solr.tests.maxBufferedDocs", String.valueOf(MAX_BUFFERED_DOCS));

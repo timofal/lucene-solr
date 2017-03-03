@@ -422,7 +422,7 @@ public class IndexFetcher {
           isFullCopyNeeded = true;
         }
 
-        if (!isFullCopyNeeded) {
+        if (!isFullCopyNeeded && !fetchFromLeader) {
           // a searcher might be using some flushed but not committed segments
           // because of soft commits (which open a searcher on IW's data)
           // so we need to close the existing searcher on the last commit

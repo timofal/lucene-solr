@@ -203,7 +203,7 @@ public class TestInPlaceUpdatesDistrib extends AbstractFullDistribZkTestBase {
   // The following should work: full update to doc 0, in-place update for doc 0, delete doc 0
   private void outOfOrderDBQsTest() throws Exception {
     if (onlyLeaderIndexes) {
-      log.info("RTG with DBQs are not working in active replicas");
+      log.info("RTG with DBQs are not working in append replicas");
       return;
     }
     
@@ -273,7 +273,7 @@ public class TestInPlaceUpdatesDistrib extends AbstractFullDistribZkTestBase {
 
   private void reorderedDBQIndividualReplicaTest() throws Exception {
     if (onlyLeaderIndexes) {
-      log.info("RTG with DBQs are not working in active replicas");
+      log.info("RTG with DBQs are not working in append replicas");
       return;
     }
     clearIndex();
