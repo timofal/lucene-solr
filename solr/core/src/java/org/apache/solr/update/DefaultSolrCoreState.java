@@ -16,6 +16,7 @@
  */
 package org.apache.solr.update;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.util.concurrent.ExecutionException;
@@ -32,8 +33,9 @@ import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.search.Sort;
 import org.apache.solr.cloud.ActionThrottle;
 import org.apache.solr.cloud.RecoveryStrategy;
-import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.cloud.ReplicateOnlyRecoveryStrategy;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.DirectoryFactory;
@@ -64,7 +66,8 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
   private SolrIndexWriter indexWriter = null;
   private DirectoryFactory directoryFactory;
 
-  private volatile RecoveryStrategy recoveryStrat;
+//  private volatile RecoveryStrategy recoveryStrat; //nocommit: Make interface
+  private volatile Thread recoveryStrat;
 
   private volatile boolean lastReplicationSuccess = true;
 
@@ -310,9 +313,16 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
               recoveryThrottle.minimumWaitBetweenActions();
               recoveryThrottle.markAttemptingAction();
               
-              recoveryStrat = new RecoveryStrategy(cc, cd, DefaultSolrCoreState.this);
-              recoveryStrat.setRecoveringAfterStartup(recoveringAfterStartup);
-              Future<?> future = cc.getUpdateShardHandler().getRecoveryExecutor().submit(recoveryStrat);
+              Future<?> future = null;
+              if (cd.getCloudDescriptor().requiresTransactionLog()) {
+                RecoveryStrategy recoveryStrat = new RecoveryStrategy(cc, cd, DefaultSolrCoreState.this);
+                recoveryStrat.setRecoveringAfterStartup(recoveringAfterStartup);
+                future = cc.getUpdateShardHandler().getRecoveryExecutor().submit(recoveryStrat);
+              } else {
+                ReplicateOnlyRecoveryStrategy recoveryStrat = new ReplicateOnlyRecoveryStrategy(cc, cd, DefaultSolrCoreState.this);
+                recoveryStrat.setRecoveringAfterStartup(recoveringAfterStartup);
+                future = cc.getUpdateShardHandler().getRecoveryExecutor().submit(recoveryStrat);
+              }
               try {
                 future.get();
               } catch (InterruptedException e) {
@@ -352,8 +362,10 @@ public final class DefaultSolrCoreState extends SolrCoreState implements Recover
   public void cancelRecovery() {
     if (recoveryStrat != null) {
       try {
-        recoveryStrat.close();
+        ((Closeable)recoveryStrat).close();
       } catch (NullPointerException e) {
+        // okay
+      } catch (IOException e) {
         // okay
       }
     }

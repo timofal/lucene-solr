@@ -62,10 +62,14 @@ public class ReplicaAssigner {
   public static class Position implements Comparable<Position> {
     public final String shard;
     public final int index;
+    public final Replica.Type type;
+    public final String suffix;
 
-    public Position(String shard, int replicaIdx) {
+    public Position(String shard, int replicaIdx, Replica.Type type) {
       this.shard = shard;
       this.index = replicaIdx;
+      this.suffix = '_' + type.name().substring(0,1).toLowerCase();
+      this.type = type;
     }
 
     @Override
@@ -188,7 +192,7 @@ public class ReplicaAssigner {
       List<Position> positions = new ArrayList<>();
       for (int pos : p) {
         for (int j = 0; j < shardVsReplicaCount.get(shardNames.get(pos)); j++) {
-          positions.add(new Position(shardNames.get(pos), j));
+          positions.add(new Position(shardNames.get(pos), j, Replica.Type.REALTIME));
         }
       }
       Collections.sort(positions);

@@ -91,10 +91,16 @@ public abstract class UpdateHandler implements SolrInfoMBean {
   }
 
   public UpdateHandler(SolrCore core)  {
-    this(core, null);
+//    this(core, null, core.getCoreDescriptor().getCloudDescriptor().requiresTransactionLog());//nocommit, handle non-cloud case
+    this(core, null, true);//nocommit, handle non-cloud case
+  }
+  
+  public UpdateHandler(SolrCore core, UpdateLog updateLog)  {
+//    this(core, updateLog, core.getCoreDescriptor().getCloudDescriptor().requiresTransactionLog());//nocommit, handle non-cloud case
+    this(core, updateLog, true);//nocommit, handle non-cloud case
   }
 
-  public UpdateHandler(SolrCore core, UpdateLog updateLog)  {
+  public UpdateHandler(SolrCore core, UpdateLog updateLog, boolean needsUpdateLog)  {
     this.core=core;
     idField = core.getLatestSchema().getUniqueKeyField();
     idFieldType = idField!=null ? idField.getType() : null;
@@ -102,7 +108,7 @@ public abstract class UpdateHandler implements SolrInfoMBean {
     PluginInfo ulogPluginInfo = core.getSolrConfig().getPluginInfo(UpdateLog.class.getName());
 
 
-    if (updateLog == null && ulogPluginInfo != null && ulogPluginInfo.isEnabled()) {
+    if (updateLog == null && ulogPluginInfo != null && ulogPluginInfo.isEnabled() && needsUpdateLog) {
       String dataDir = (String)ulogPluginInfo.initArgs.get("dir");
 
       String ulogDir = core.getCoreDescriptor().getUlogDir();

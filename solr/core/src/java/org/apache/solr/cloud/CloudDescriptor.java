@@ -43,6 +43,13 @@ public class CloudDescriptor {
   volatile Replica.State lastPublished = Replica.State.ACTIVE;
 
   public static final String NUM_SHARDS = "numShards";
+  
+  public static final String REPLICA_TYPE = "replicaType";
+  
+  /**
+   * The type of replica this core hosts
+   */
+  private final Replica.Type replicaType;
 
   public CloudDescriptor(String coreName, Properties props, CoreDescriptor cd) {
     this.cd = cd;
@@ -56,12 +63,16 @@ public class CloudDescriptor {
     if (Strings.isNullOrEmpty(nodeName))
       this.nodeName = null;
     this.numShards = PropertiesUtil.toInteger(props.getProperty(CloudDescriptor.NUM_SHARDS), null);
-
+    this.replicaType = Replica.Type.valueOf(props.getProperty(CloudDescriptor.REPLICA_TYPE, Replica.Type.REALTIME.name()));
     for (String propName : props.stringPropertyNames()) {
       if (propName.startsWith(ZkController.COLLECTION_PARAM_PREFIX)) {
         collectionParams.put(propName.substring(ZkController.COLLECTION_PARAM_PREFIX.length()), props.getProperty(propName));
       }
     }
+  }
+  
+  public boolean requiresTransactionLog() {
+    return this.replicaType != Replica.Type.PASSIVE;
   }
   
   public Replica.State getLastPublished() {
@@ -134,5 +145,9 @@ public class CloudDescriptor {
     this.nodeName = nodeName;
     if(nodeName==null) cd.getPersistableStandardProperties().remove(CoreDescriptor.CORE_NODE_NAME);
     else cd.getPersistableStandardProperties().setProperty(CoreDescriptor.CORE_NODE_NAME, nodeName);
+  }
+
+  public Replica.Type getReplicaType() {
+    return replicaType;
   }
 }

@@ -62,6 +62,7 @@ import org.apache.solr.common.cloud.DefaultZkCredentialsProvider;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.OnReconnect;
 import org.apache.solr.common.cloud.Replica;
+import org.apache.solr.common.cloud.Replica.Type;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkACLProvider;
@@ -86,7 +87,6 @@ import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.logging.MDCLoggingContext;
-import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.UpdateLog;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -883,12 +883,17 @@ public class ZkController {
       try {
         // If we're a preferred leader, insert ourselves at the head of the queue
         boolean joinAtHead = false;
-        Replica replica = zkStateReader.getClusterState().getReplica(desc.getCloudDescriptor().getCollectionName(),
-            coreZkNodeName);
+        Replica replica = zkStateReader.getClusterState().getReplica(collection, coreZkNodeName);
         if (replica != null) {
           joinAtHead = replica.getBool(SliceMutator.PREFERRED_LEADER_PROP, false);
         }
-        joinElection(desc, afterExpiration, joinAtHead);
+        //TODO WHy would replica be null?
+        if (replica == null || replica.getType() != Type.PASSIVE) {
+          joinElection(desc, afterExpiration, joinAtHead);
+        } else if (replica.getType() == Type.PASSIVE) {
+          log.debug("Replica {} skipping election because replica is passive", coreZkNodeName);
+          startReplicationFromLeader(coreName, false);
+        }
       } catch (InterruptedException e) {
         // Restore the interrupted status
         Thread.currentThread().interrupt();
@@ -905,6 +910,7 @@ public class ZkController {
       String ourUrl = ZkCoreNodeProps.getCoreUrl(baseUrl, coreName);
       log.debug("We are " + ourUrl + " and leader is " + leaderUrl);
       boolean isLeader = leaderUrl.equals(ourUrl);
+      assert !(isLeader && zkStateReader.getClusterState().getCollection(collection).getReplica(coreZkNodeName).getType() == Type.PASSIVE): "Passive replica became leader!";
       
       try (SolrCore core = cc.getCore(desc.getName())) {
         
@@ -944,10 +950,11 @@ public class ZkController {
             = checkRecovery(recoverReloadedCores, isLeader, skipRecovery, collection, coreZkNodeName, core, cc, afterExpiration);
         if (!didRecovery) {
           if (isReplicaInOnlyLeaderIndexes) {
-            startReplicationFromLeader(coreName);
+            startReplicationFromLeader(coreName, true);
           }
           publish(desc, Replica.State.ACTIVE);
         }
+        
         
         core.getCoreDescriptor().getCloudDescriptor().setHasRegistered(true);
       }
@@ -960,14 +967,18 @@ public class ZkController {
     }
   }
 
-  public void startReplicationFromLeader(String coreName) throws InterruptedException {
+  public void startReplicationFromLeader(String coreName, boolean switchTransactionLog) throws InterruptedException {
+    log.info(coreName + " starting replication from leader");
     ReplicateFromLeader replicateFromLeader = new ReplicateFromLeader(cc, coreName);
     if (replicateFromLeaders.putIfAbsent(coreName, replicateFromLeader) == null) {
-      replicateFromLeader.startReplication();
+      replicateFromLeader.startReplication(switchTransactionLog);
+    } else {
+      log.warn("A replicate from leader instance already exists for core {}", coreName);
     }
   }
 
   public void stopReplicationFromLeader(String coreName) {
+    log.info(coreName + " stopping replication from leader");
     ReplicateFromLeader replicateFromLeader = replicateFromLeaders.remove(coreName);
     if (replicateFromLeader != null) {
       replicateFromLeader.stopReplication();
@@ -1189,6 +1200,7 @@ public class ZkController {
       // If the leader initiated recovery, then verify that this replica has performed
       // recovery as requested before becoming active; don't even look at lirState if going down
       if (state != Replica.State.DOWN) {
+        //nocommit check for readOnly case
         final Replica.State lirState = getLeaderInitiatedRecoveryState(collection, shardId, coreNodeName);
         if (lirState != null) {
           if (state == Replica.State.ACTIVE) {
@@ -1269,12 +1281,16 @@ public class ZkController {
       assert false : "No collection was specified [" + collection + "]";
       return;
     }
+    Replica replica = zkStateReader.getClusterState().getReplica(collection, coreNodeName);
+    
+    if (replica == null || replica.getType() != Type.PASSIVE) {
+      ElectionContext context = electionContexts.remove(new ContextKey(collection, coreNodeName));
 
-    ElectionContext context = electionContexts.remove(new ContextKey(collection, coreNodeName));
-
-    if (context != null) {
-      context.cancelElection();
+      if (context != null) {
+        context.cancelElection();
+      }
     }
+//    //TODO: Do we need to stop replication for type==append?
 
     CloudDescriptor cloudDescriptor = cd.getCloudDescriptor();
     zkStateReader.unregisterCore(cloudDescriptor.getCollectionName());
@@ -1357,6 +1373,7 @@ public class ZkController {
       final String shardId = zkStateReader.getClusterState().getShardId(cd.getCollectionName(), getNodeName(), cd.getName());
       if (shardId != null) {
         cd.getCloudDescriptor().setShardId(shardId);
+        log.debug("Shard ID is {} for core {} ", shardId, cd.getName());
         return;
       }
       try {
@@ -1456,6 +1473,7 @@ public class ZkController {
             return true;
           }
           errorMessage.set("coreNodeName " + coreNodeName + " exists, but does not match expected node or core name");
+          log.debug("coreNodeName " + coreNodeName + " exists, but does not match expected node or core name");
           return false;
         });
       } catch (TimeoutException e) {
@@ -2410,11 +2428,9 @@ public class ZkController {
 
       for (Slice slice : slices) {
         Collection<Replica> replicas = slice.getReplicas();
-        for (Replica replica : replicas) {
-          if (replica.getName().equals(
-              dcore.getCloudDescriptor().getCoreNodeName())) {
-            return true;
-          }
+        Replica r = slice.getReplica(dcore.getCloudDescriptor().getCoreNodeName());
+        if (r != null) {
+          return true;
         }
       }
     }

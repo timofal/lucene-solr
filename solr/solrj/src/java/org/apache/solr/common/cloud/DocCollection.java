@@ -18,6 +18,7 @@ package org.apache.solr.common.cloud;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -61,7 +62,6 @@ public class DocCollection extends ZkNodeProps implements Iterable<Slice> {
   private final Integer maxShardsPerNode;
   private final Boolean autoAddReplicas;
   private final Integer realtimeReplicas;
-
 
   public DocCollection(String name, Map<String, Slice> slices, Map<String, Object> props, DocRouter router) {
     this(name, slices, props, router, Integer.MAX_VALUE, ZkStateReader.CLUSTER_STATE);
@@ -308,6 +308,14 @@ public class DocCollection extends ZkNodeProps implements Iterable<Slice> {
     List<Replica> replicas = new ArrayList<>();
     for (Slice slice : this) {
       replicas.addAll(slice.getReplicas());
+    }
+    return replicas;
+  }
+  
+  public List<Replica> getReplicas(EnumSet<Replica.Type> s) {
+    List<Replica> replicas = new ArrayList<>();
+    for (Slice slice : this) {
+      replicas.addAll(slice.getReplicas(s));
     }
     return replicas;
   }

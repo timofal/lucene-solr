@@ -137,7 +137,8 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   }
   
   public DirectUpdateHandler2(SolrCore core, UpdateHandler updateHandler) {
-    super(core, updateHandler.getUpdateLog());
+//  TODO  super(core, updateHandler.getUpdateLog(), core.getCoreDescriptor().getCloudDescriptor().requiresTransactionLog());
+    super(core, updateHandler.getUpdateLog(), true);
     solrCoreState = core.getSolrCoreState();
     
     UpdateHandlerInfo updateHandlerInfo = core.getSolrConfig()

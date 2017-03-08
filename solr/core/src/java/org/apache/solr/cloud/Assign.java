@@ -108,7 +108,7 @@ public class Assign {
     return returnShardId;
   }
 
-  static String buildCoreName(DocCollection collection, String shard) {
+  static String buildCoreName(DocCollection collection, String shard, Replica.Type type) {
     Slice slice = collection.getSlice(shard);
     int replicaNum = slice.getReplicas().size();
     for (; ; ) {
@@ -123,7 +123,7 @@ public class Assign {
       if (exists) replicaNum++;
       else break;
     }
-    return collection.getName() + "_" + shard + "_replica" + replicaNum;
+    return collection.getName() + "_" + shard + "_replica_" + type.name().substring(0,1).toLowerCase() + replicaNum;
   }
 
   static class ReplicaCount {
