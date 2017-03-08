@@ -18,8 +18,10 @@ package org.apache.solr.util;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.Timer;
@@ -41,6 +43,7 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.Pair;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.handler.RealTimeGetHandler;
 import org.apache.solr.handler.ReplicationHandler;
 import org.apache.solr.update.SolrIndexWriter;
 import org.slf4j.Logger;
@@ -365,8 +368,7 @@ public class TestInjection {
     Pair<Boolean,Integer> pair = parseValue(waitForReplicasInSync);
     boolean enabled = pair.first();
     if (!enabled) return true;
-
-    Thread.sleep(1000);
+    long t = System.currentTimeMillis() - 100;
     try {
       for (int i = 0; i < pair.second(); i++) {
         if (core.isClosed()) return true;
@@ -381,8 +383,8 @@ public class TestInjection {
           long leaderVersion = (long) ((NamedList)response.get("details")).get("indexVersion");
 
           String localVersion = core.getDeletionPolicy().getLatestCommit().getUserData().get(SolrIndexWriter.COMMIT_TIME_MSEC_KEY);
-          if (localVersion == null && leaderVersion == 0) return true;
-          if (localVersion != null && Long.parseLong(localVersion) == leaderVersion) {
+          if (localVersion == null && leaderVersion == 0 && !core.getUpdateHandler().getUpdateLog().hasUncommittedChanges()) return true;
+          if (localVersion != null && Long.parseLong(localVersion) == leaderVersion && leaderVersion >= t) {
             return true;
           } else {
             Thread.sleep(500);
